@@ -19,23 +19,17 @@ uv run pytest
 
 ## Project structure
 
-- `src/time_trace/command.py` — clang command wrapping
-- `src/time_trace/trace_loader.py` — clang JSON loading
-- `src/time_trace/reconstruct.py` — call-tree reconstruction
-- `src/time_trace/sampling.py` — synthetic sample planning
-- `src/time_trace/elf_writer.py` — synthetic ELF generation
-- `src/time_trace/perf_data_model.py` — direct perf.data packing
-- `src/time_trace/perf_writer.py` — perf artifact writing and validation
-- `src/time_trace/pipeline.py` — end-to-end orchestration
-- `tests/` — unit and integration coverage
-
-## Test split
-
-- unit tests for command wrapping, loading, reconstruction, sample planning, and direct perf-data writing
-- integration tests for tiny clang traces and perf ingestion
+- [`src/time_trace/command.py`](../src/time_trace/command.py) — clang command rewriting and output-path detection
+- [`src/time_trace/trace_loader.py`](../src/time_trace/trace_loader.py) — clang JSON loading and event normalization
+- [`src/time_trace/reconstruct.py`](../src/time_trace/reconstruct.py) — tree reconstruction and synthetic phase grouping
+- [`src/time_trace/sampling.py`](../src/time_trace/sampling.py) — timeline-aware sample planning
+- [`src/time_trace/elf_writer.py`](../src/time_trace/elf_writer.py) — synthetic shared object generation for perf symbolization
+- [`src/time_trace/perf_data_model.py`](../src/time_trace/perf_data_model.py) — perf.data record packing
+- [`src/time_trace/perf_writer.py`](../src/time_trace/perf_writer.py) — perf artifact writing and validation
+- [`src/time_trace/pipeline.py`](../src/time_trace/pipeline.py) — end-to-end orchestration
+- [`tests/`](../tests/) — coverage for CLI, reconstruction, sampling, perf output, and end-to-end sample programs
 
 ## Notes
 
-The current implementation writes `perf.data` directly. It does not call
-`perf record` or use a locally captured seed file. It also expects `nm` to be
-available so it can map symbol offsets in the synthetic shared object.
+`nm` must be available so the tool can map symbol offsets in the synthetic
+shared object.
