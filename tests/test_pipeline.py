@@ -9,6 +9,7 @@ import pytest
 
 from tests.support.perf_checks import read_perf_report, read_perf_script
 from time_trace.pipeline import PipelineOptions, run_pipeline
+from time_trace.trace_model import ProfileRequest
 
 pytestmark = pytest.mark.skipif(
     shutil.which("clang++") is None
@@ -86,3 +87,13 @@ Tup<int, double, char> value;
     assert result.perf_artifacts.perf_data_path.exists()
     assert "clang frontend" in read_perf_report(result.perf_artifacts.perf_data_path)
     assert read_perf_script(result.perf_artifacts.perf_data_path)
+
+
+def test_pipeline_options_reject_zero_sample_frequency() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        PipelineOptions(sample_frequency=0)
+
+
+def test_profile_request_rejects_zero_sample_frequency() -> None:
+    with pytest.raises(ValueError, match="positive"):
+        ProfileRequest(["clang++"], sample_frequency=0)

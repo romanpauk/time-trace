@@ -4,6 +4,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+def _validate_sample_frequency(sample_frequency: int | None) -> None:
+    if sample_frequency is not None and sample_frequency <= 0:
+        raise ValueError("sample_frequency must be positive when provided")
+
+
 @dataclass(frozen=True)
 class TraceEvent:
     name: str
@@ -52,12 +57,11 @@ class PlannedSample:
 
 
 @dataclass(frozen=True)
-class SamplingPlan:
+class SamplingBlueprint:
     root_symbol_name: str
     total_duration_us: int
     sample_count: int
     symbols: tuple[SymbolDefinition, ...]
-    samples: tuple[PlannedSample, ...]
 
 
 @dataclass(frozen=True)
@@ -84,3 +88,6 @@ class ProfileRequest:
     emit_intermediate: bool = False
     max_nodes: int = 512
     sample_frequency: int | None = None
+
+    def __post_init__(self) -> None:
+        _validate_sample_frequency(self.sample_frequency)

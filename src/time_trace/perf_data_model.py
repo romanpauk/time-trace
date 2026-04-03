@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import struct
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -32,6 +33,15 @@ _ATTR_FLAG_MMAP2 = 1 << 28
 
 _PAGE_SIZE = 4_096
 _HEADER_SIZE = 104
+_U64 = struct.Struct("<Q")
+_RECORD_HEADER = struct.Struct("<IHH")
+_COMM_PREFIX = struct.Struct("<II")
+_MMAP2_PREFIX = struct.Struct("<IIQQQIIQQII")
+_SAMPLE_PREFIX = struct.Struct("<QIIQQIIQ")
+_SAMPLE_ID = struct.Struct("<IIQQII")
+_FILE_ATTR_TRAILER = struct.Struct("<QQ")
+_PERF_HEADER_TAIL = struct.Struct("<QQQQQQQQQQQQ")
+_PERF_FILE_ATTR = struct.Struct("<IIQQQQQIIQQQQIiQI4x")
 
 
 @dataclass(frozen=True)
@@ -87,9 +97,9 @@ def build_perf_file_layout(
     contract: PerfWriterContract,
     *,
     synthetic_elf: SyntheticElfLayout,
-    samples: tuple[PlannedSample, ...],
+    samples: Iterable[PlannedSample],
 ) -> PerfFileLayout:
-    ids_blob = struct.pack("<Q", contract.event_id)
+    ids_blob = _U64.pack(contract.event_id)
     ids_offset = contract.header_size
     attrs_offset = ids_offset + len(ids_blob)
     attrs_blob = _build_perf_file_attr(
@@ -98,25 +108,28 @@ def build_perf_file_layout(
         ids_size=len(ids_blob),
     )
 
-    records = [
-        build_comm_record(contract, timestamp_ns=1),
+    data_parts = bytearray()
+    data_parts.extend(build_comm_record(contract, timestamp_ns=1))
+    data_parts.extend(
         build_mmap2_record(
             contract,
             image_path=synthetic_elf.image_path,
             timestamp_ns=2,
-        ),
-    ]
+        )
+    )
     symbol_addresses = {symbol.symbol_name: symbol.address for symbol in synthetic_elf.symbols}
+    callchain_cache: dict[tuple[str, ...], tuple[int, bytes]] = {}
     for sample in samples:
-        records.append(
+        data_parts.extend(
             build_sample_record(
                 contract,
                 sample=sample,
                 symbol_addresses=symbol_addresses,
+                callchain_cache=callchain_cache,
             )
         )
 
-    data_blob = b"".join(records)
+    data_blob = bytes(data_parts)
     data_offset = attrs_offset + len(attrs_blob)
     header_blob = build_perf_header(
         attrs_offset=attrs_offset,
@@ -139,8 +152,7 @@ def build_perf_header(
     data_offset: int,
     data_size: int,
 ) -> bytes:
-    return b"PERFILE2" + struct.pack(
-        "<QQQQQQQQQQQQ",
+    return b"PERFILE2" + _PERF_HEADER_TAIL.pack(
         _HEADER_SIZE,
         attrs_size,
         attrs_offset,
@@ -157,7 +169,7 @@ def build_perf_header(
 
 
 def build_comm_record(contract: PerfWriterContract, *, timestamp_ns: int) -> bytes:
-    payload = struct.pack("<II", contract.pid, contract.tid)
+    payload = _COMM_PREFIX.pack(contract.pid, contract.tid)
     payload += _encode_c_string(contract.comm)
     payload += _build_sample_id(contract, timestamp_ns=timestamp_ns)
     return _build_record(PERF_RECORD_COMM, PERF_RECORD_MISC_USER, payload)
@@ -170,8 +182,7 @@ def build_mmap2_record(
     timestamp_ns: int,
 ) -> bytes:
     stat_result = image_path.stat()
-    payload = struct.pack(
-        "<IIQQQIIQQII",
+    payload = _MMAP2_PREFIX.pack(
         contract.pid,
         contract.tid,
         contract.base_address,
@@ -194,18 +205,19 @@ def build_sample_record(
     *,
     sample: PlannedSample,
     symbol_addresses: dict[str, int],
+    callchain_cache: dict[tuple[str, ...], tuple[int, bytes]] | None = None,
 ) -> bytes:
     if not sample.stack_symbols:
         raise ValueError("planned sample must contain at least one stack frame")
 
-    try:
-        callchain = tuple(symbol_addresses[symbol_name] for symbol_name in sample.stack_symbols)
-    except KeyError as exc:
-        raise KeyError(f"missing synthetic symbol mapping for {exc.args[0]!r}") from exc
+    leaf_address, callchain_payload = _resolve_callchain_payload(
+        sample.stack_symbols,
+        symbol_addresses=symbol_addresses,
+        callchain_cache=callchain_cache,
+    )
 
-    payload = struct.pack(
-        "<QIIQQIIQ",
-        callchain[0],
+    payload = _SAMPLE_PREFIX.pack(
+        leaf_address,
         contract.pid,
         contract.tid,
         sample.timestamp_ns,
@@ -214,8 +226,7 @@ def build_sample_record(
         0,
         sample.period,
     )
-    payload += struct.pack("<Q", len(callchain))
-    payload += b"".join(struct.pack("<Q", address) for address in callchain)
+    payload += callchain_payload
     return _build_record(PERF_RECORD_SAMPLE, PERF_RECORD_MISC_USER, payload)
 
 
@@ -225,8 +236,7 @@ def _build_perf_file_attr(
     ids_offset: int,
     ids_size: int,
 ) -> bytes:
-    attr = struct.pack(
-        "<IIQQQQQIIQQQQIiQI4x",
+    attr = _PERF_FILE_ATTR.pack(
         PERF_TYPE_SOFTWARE,
         contract.attr_size,
         PERF_COUNT_SW_CPU_CLOCK,
@@ -247,18 +257,17 @@ def _build_perf_file_attr(
     )
     if len(attr) != contract.attr_size:
         raise RuntimeError(f"unexpected perf_event_attr size: {len(attr)}")
-    return attr + struct.pack("<QQ", ids_offset, ids_size)
+    return attr + _FILE_ATTR_TRAILER.pack(ids_offset, ids_size)
 
 
 def _build_record(record_type: int, misc: int, payload: bytes) -> bytes:
     size = 8 + len(payload)
     padding = (8 - (size % 8)) % 8
-    return struct.pack("<IHH", record_type, misc, size + padding) + payload + (b"\0" * padding)
+    return _RECORD_HEADER.pack(record_type, misc, size + padding) + payload + (b"\0" * padding)
 
 
 def _build_sample_id(contract: PerfWriterContract, *, timestamp_ns: int) -> bytes:
-    return struct.pack(
-        "<IIQQII",
+    return _SAMPLE_ID.pack(
         contract.pid,
         contract.tid,
         timestamp_ns,
@@ -266,6 +275,31 @@ def _build_sample_id(contract: PerfWriterContract, *, timestamp_ns: int) -> byte
         contract.cpu,
         0,
     )
+
+
+def _resolve_callchain_payload(
+    stack_symbols: tuple[str, ...],
+    *,
+    symbol_addresses: dict[str, int],
+    callchain_cache: dict[tuple[str, ...], tuple[int, bytes]] | None,
+) -> tuple[int, bytes]:
+    cached_payload = None if callchain_cache is None else callchain_cache.get(stack_symbols)
+    if cached_payload is not None:
+        return cached_payload
+
+    try:
+        callchain = tuple(symbol_addresses[symbol_name] for symbol_name in stack_symbols)
+    except KeyError as exc:
+        raise KeyError(f"missing synthetic symbol mapping for {exc.args[0]!r}") from exc
+
+    payload = bytearray()
+    payload.extend(_U64.pack(len(callchain)))
+    for address in callchain:
+        payload.extend(_U64.pack(address))
+    resolved = (callchain[0], bytes(payload))
+    if callchain_cache is not None:
+        callchain_cache[stack_symbols] = resolved
+    return resolved
 
 
 def _encode_c_string(value: str) -> bytes:

@@ -1,22 +1,16 @@
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import pytest
 
 from tests.support.perf_checks import read_perf_report, read_perf_script
 from time_trace.perf_writer import _ensure_supported_host, emit_perf_profile
-from time_trace.trace_model import PlannedSample, SamplingPlan, SymbolDefinition
-
-pytestmark = pytest.mark.skipif(
-    shutil.which("clang") is None or shutil.which("perf") is None or shutil.which("nm") is None,
-    reason="clang, nm, and perf are required for the direct-writer smoke test",
-)
+from time_trace.trace_model import PlannedSample, SamplingBlueprint, SymbolDefinition
 
 
 def test_emit_perf_profile_generates_perf_compatible_output(tmp_path: Path) -> None:
-    plan = SamplingPlan(
+    plan = SamplingBlueprint(
         root_symbol_name="clang frontend",
         total_duration_us=1_000,
         sample_count=32,
@@ -24,14 +18,14 @@ def test_emit_perf_profile_generates_perf_compatible_output(tmp_path: Path) -> N
             SymbolDefinition(symbol_name="clang frontend", display_label="clang frontend"),
             SymbolDefinition(symbol_name="tmpl::leaf<int>", display_label="tmpl::leaf<int>"),
         ),
-        samples=tuple(
-            PlannedSample(
-                timestamp_ns=index + 1,
-                period=1,
-                stack_symbols=("tmpl::leaf<int>", "clang frontend"),
-            )
-            for index in range(32)
-        ),
+    )
+    samples = tuple(
+        PlannedSample(
+            timestamp_ns=index + 1,
+            period=1,
+            stack_symbols=("tmpl::leaf<int>", "clang frontend"),
+        )
+        for index in range(32)
     )
 
     artifacts = emit_perf_profile(
@@ -39,6 +33,7 @@ def test_emit_perf_profile_generates_perf_compatible_output(tmp_path: Path) -> N
         output_dir=tmp_path,
         compiler="clang",
         keep_intermediate=True,
+        samples=samples,
     )
 
     assert artifacts.perf_data_path.exists()
@@ -55,7 +50,7 @@ def test_emit_perf_profile_generates_perf_compatible_output(tmp_path: Path) -> N
 
 
 def test_emit_perf_profile_writes_all_expected_artifacts(tmp_path: Path) -> None:
-    plan = SamplingPlan(
+    plan = SamplingBlueprint(
         root_symbol_name="clang frontend",
         total_duration_us=1_000,
         sample_count=8,
@@ -63,24 +58,71 @@ def test_emit_perf_profile_writes_all_expected_artifacts(tmp_path: Path) -> None
             SymbolDefinition(symbol_name="clang frontend", display_label="clang frontend"),
             SymbolDefinition(symbol_name="tmpl::leaf<int>", display_label="tmpl::leaf<int>"),
         ),
-        samples=tuple(
-            PlannedSample(
-                timestamp_ns=index + 1,
-                period=1,
-                stack_symbols=("tmpl::leaf<int>", "clang frontend"),
-            )
-            for index in range(8)
-        ),
+    )
+    samples = tuple(
+        PlannedSample(
+            timestamp_ns=index + 1,
+            period=1,
+            stack_symbols=("tmpl::leaf<int>", "clang frontend"),
+        )
+        for index in range(8)
     )
 
     artifacts = emit_perf_profile(
         plan,
         output_dir=tmp_path,
         compiler="clang",
+        samples=samples,
     )
 
     assert artifacts.perf_data_path.exists()
     assert artifacts.synthetic_image_path.exists()
+
+
+def test_emit_perf_profile_rejects_unknown_sample_symbol(tmp_path: Path) -> None:
+    plan = SamplingBlueprint(
+        root_symbol_name="clang frontend",
+        total_duration_us=1_000,
+        sample_count=1,
+        symbols=(SymbolDefinition(symbol_name="clang frontend", display_label="clang frontend"),),
+    )
+
+    with pytest.raises(ValueError, match="not declared"):
+        emit_perf_profile(
+            plan,
+            output_dir=tmp_path,
+            compiler="clang",
+            samples=(
+                PlannedSample(
+                    timestamp_ns=1,
+                    period=1,
+                    stack_symbols=("missing", "clang frontend"),
+                ),
+            ),
+        )
+
+
+def test_emit_perf_profile_rejects_sample_count_mismatch(tmp_path: Path) -> None:
+    plan = SamplingBlueprint(
+        root_symbol_name="clang frontend",
+        total_duration_us=1_000,
+        sample_count=2,
+        symbols=(SymbolDefinition(symbol_name="clang frontend", display_label="clang frontend"),),
+    )
+
+    with pytest.raises(ValueError, match="expected 2 samples, wrote 1"):
+        emit_perf_profile(
+            plan,
+            output_dir=tmp_path,
+            compiler="clang",
+            samples=(
+                PlannedSample(
+                    timestamp_ns=1,
+                    period=1,
+                    stack_symbols=("clang frontend",),
+                ),
+            ),
+        )
 
 
 def test_ensure_supported_host_rejects_non_x86() -> None:
