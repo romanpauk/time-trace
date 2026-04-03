@@ -54,7 +54,7 @@ def run_cpp_sample(case: CppSampleCase, tmp_path: Path) -> PipelineResult:
 def read_perf_report(perf_data_path: Path, *, call_graph_order: str | None = None) -> str:
     command = ["perf", "report", "--stdio", "-i", str(perf_data_path), "--sort", "symbol"]
     if call_graph_order is not None:
-        command.extend(["--call-graph", call_graph_order])
+        command.extend(["--percent-limit", "0", "--call-graph", call_graph_order])
     return _run(command)
 
 

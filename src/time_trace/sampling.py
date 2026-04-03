@@ -45,17 +45,18 @@ def build_sampling_stream(
     )
 
     duration_us = max(1, root.duration_us)
-    sample_count = max(1, round(duration_us * frequency / 1_000_000))
+    timeline_sample_count = max(1, round(duration_us * frequency / 1_000_000))
     duration_ns = max(1, duration_us * 1_000)
+
     return SamplingBlueprint(
         root_symbol_name=symbolized_root.symbol_name,
         total_duration_us=duration_us,
-        sample_count=sample_count,
+        sample_count=timeline_sample_count,
         symbols=tuple(symbols),
     ), _iter_timeline_samples(
         symbolized_root,
         duration_ns=duration_ns,
-        sample_count=sample_count,
+        sample_count=timeline_sample_count,
     )
 
 

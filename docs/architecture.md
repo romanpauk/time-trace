@@ -17,24 +17,26 @@ with normal perf commands.
 
 Clang time-trace events are loaded as intervals with start and duration
 information. Reconstruction builds a nested tree from those intervals and keeps
-synthetic phase roots such as frontend, template instantiation, or codegen when
+synthetic phase roots such as frontend, template, or codegen when
 that makes the result easier to navigate.
 
 Sampling is timeline-aware. The tool chooses sample timestamps across the full
-trace duration and resolves the active stack at each timestamp. That gives the
-written `perf.data` file chronological synthetic samples instead of a flat list
-of weighted symbols.
+trace duration and resolves the active stack at each timestamp. Each sampled
+stack is written in leaf-owned order.
 
-The tree stays narrow by limiting the number of retained nodes. When the trace
-is larger than the configured maximum, reconstruction prunes lower-priority
-subtrees while keeping the main hot paths visible.
+Before reconstruction, the tool can filter raw clang events by glob pattern.
+Filtering uses raw event fields (`name`, `label`, `cat`) plus a small set of
+derived tags such as `template`, `parse`, `semantic`, and `codegen`.
+
+The reconstructed tree is kept in full unless `--max-nodes` is provided. When a
+maximum is configured, reconstruction prunes lower-priority subtrees while
+keeping the main hot paths visible.
 
 ## Synthetic symbols
 
 The generated `perf.data` points at a synthetic shared object with one symbol per
 sampled frame name. Symbol names come from the reconstructed compiler frames,
-for example `clang frontend`, `template instantiation`, or a concrete template
-instantiation such as `ValueAt<100, ValueList<...>>`.
+for example `clang frontend`, `template`, or a concrete template such as `ValueAt<100, ValueList<...>>`.
 
 The synthetic image gives perf normal symbol lookup inputs, so `perf report` and
 `perf script` can show names without any custom viewer.
