@@ -1,0 +1,11 @@
+{
+  "traceEvents": [
+    {"name": "ExecuteCompiler", "ph": "X", "ts": 0, "dur": 1000},
+    {"name": "Frontend", "ph": "X", "ts": 10, "dur": 700},
+    {"name": "ParseClass", "ph": "X", "ts": 20, "dur": 200, "args": {"detail": "foo.hpp:1:1"}},
+    {"name": "InstantiateClass", "ph": "X", "ts": 250, "dur": 120, "args": {"detail": "Foo<int>"}},
+    {"name": "Backend", "ph": "X", "ts": 750, "dur": 180},
+    {"name": "Total Frontend", "ph": "X", "ts": 0, "dur": 700, "args": {"count": 1}}
+  ],
+  "beginningOfTime": 0
+}
