@@ -28,8 +28,11 @@ def test_main_invokes_pipeline_and_prints_perf_data(
             perf_artifacts=PerfArtifacts(
                 perf_data_path=perf_data_path,
                 report_path=report_path,
-                replay_ir_path=tmp_path / "replay.ll",
-                replay_binary_path=tmp_path / "replay-helper",
+                caller_report_path=tmp_path / "perf-report-caller.txt",
+                callee_report_path=tmp_path / "perf-report-callee.txt",
+                script_path=tmp_path / "perf-script.txt",
+                synthetic_image_path=tmp_path / "synthetic-image.so",
+                intermediate_ir_path=tmp_path / "synthetic-image.ll",
             ),
         )
 

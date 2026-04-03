@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import platform
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -8,8 +10,12 @@ import pytest
 from time_trace.pipeline import PipelineOptions, run_pipeline
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("clang++") is None or shutil.which("perf") is None,
-    reason="clang++ and perf are required for the end-to-end pipeline test",
+    shutil.which("clang++") is None
+    or shutil.which("perf") is None
+    or shutil.which("nm") is None
+    or platform.machine() != "x86_64"
+    or sys.byteorder != "little",
+    reason="clang++, nm, perf, and a little-endian x86_64 host are required",
 )
 
 
@@ -37,11 +43,12 @@ Tup<int, double, char> value;
             keep_trace=True,
             emit_intermediate=True,
             max_nodes=64,
-            target_iterations=60_000_000,
+            sample_frequency=4_000,
         ),
     )
 
     assert result.perf_artifacts.perf_data_path.exists()
+    assert result.perf_artifacts.synthetic_image_path.exists()
     report = result.perf_artifacts.report_path.read_text()
     assert "clang frontend" in report or "codegen" in report
     assert any(path.suffix == ".json" for path in output.iterdir())

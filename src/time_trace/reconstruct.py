@@ -19,7 +19,7 @@ _CODEGEN_NAMES = {
     "OptModule",
     "Optimizer",
 }
-PathKey = tuple[str, ...]
+PathKey = tuple[int, ...]
 RankedNode = tuple[int, int, PathKey]
 
 
@@ -54,8 +54,8 @@ def build_call_tree(events: list[TraceEvent], *, max_nodes: int = 512) -> CallTr
     _compute_self_time(root)
     root = _unwrap_execute_compiler(root)
     root = _inject_phase_groups(root)
-    root = _aggregate_tree(root)
     root = _prune_tree(root, max_nodes=max_nodes)
+    _compute_self_time(root)
     return root
 
 
@@ -129,75 +129,21 @@ def _inject_phase_groups(node: CallTreeNode) -> CallTreeNode:
         self_us=node.self_us,
         children=sorted(
             [*passthrough_children, *synthetic_children],
-            key=lambda child: child.duration_us,
-            reverse=True,
+            key=_node_sort_key,
         ),
     )
 
 
 def _build_phase_parent(phase: str, children: list[CallTreeNode]) -> CallTreeNode:
-    label = _PHASE_LABELS[phase]
+    start_us = min(child.start_us for child in children)
+    end_us = max(child.end_us for child in children)
     return CallTreeNode(
-        name=label,
-        label=label,
-        start_us=min(child.start_us for child in children),
-        duration_us=sum(child.duration_us for child in children),
+        name=_PHASE_LABELS[phase],
+        label=_PHASE_LABELS[phase],
+        start_us=start_us,
+        duration_us=end_us - start_us,
         phase=phase,
-        self_us=0,
-        children=children,
-    )
-
-
-def _aggregate_tree(node: CallTreeNode) -> CallTreeNode:
-    aggregated_children: dict[str, CallTreeNode] = {}
-    for child in node.children:
-        aggregated = _aggregate_tree(child)
-        if aggregated.label in aggregated_children:
-            aggregated_children[aggregated.label] = _merge_nodes(
-                aggregated_children[aggregated.label],
-                aggregated,
-            )
-        else:
-            aggregated_children[aggregated.label] = aggregated
-
-    children = sorted(
-        aggregated_children.values(),
-        key=lambda child: child.duration_us,
-        reverse=True,
-    )
-    duration_us = node.self_us + sum(child.duration_us for child in children)
-    return CallTreeNode(
-        name=node.name,
-        label=node.label,
-        start_us=node.start_us,
-        duration_us=duration_us,
-        phase=node.phase,
-        detail=node.detail,
-        self_us=node.self_us,
-        children=children,
-    )
-
-
-def _merge_nodes(left: CallTreeNode, right: CallTreeNode) -> CallTreeNode:
-    merged_children: dict[str, CallTreeNode] = {child.label: child for child in left.children}
-    for child in right.children:
-        if child.label in merged_children:
-            merged_children[child.label] = _merge_nodes(merged_children[child.label], child)
-        else:
-            merged_children[child.label] = child
-
-    children = sorted(merged_children.values(), key=lambda child: child.duration_us, reverse=True)
-    self_us = left.self_us + right.self_us
-    duration_us = self_us + sum(child.duration_us for child in children)
-    return CallTreeNode(
-        name=left.name,
-        label=left.label,
-        start_us=min(left.start_us, right.start_us),
-        duration_us=duration_us,
-        phase=left.phase,
-        detail=left.detail or right.detail,
-        self_us=self_us,
-        children=children,
+        children=sorted(children, key=_node_sort_key),
     )
 
 
@@ -206,16 +152,16 @@ def _prune_tree(root: CallTreeNode, *, max_nodes: int) -> CallTreeNode:
         raise ValueError("max_nodes must be positive")
 
     ranked: list[RankedNode] = []
-    _collect_ranked_nodes(root, path=(root.label,), ranked=ranked)
+    _collect_ranked_nodes(root, path=(), ranked=ranked)
     if len(ranked) + 1 <= max_nodes:
         return root
 
-    keep_paths: set[PathKey] = {(root.label,)}
+    keep_paths: set[PathKey] = {()}
     for _neg_duration, _neg_self, path in heapq.nsmallest(max_nodes - 1, ranked):
-        for index in range(1, len(path) + 1):
+        for index in range(len(path) + 1):
             keep_paths.add(path[:index])
 
-    return _rebuild_pruned(root, path=(root.label,), keep_paths=keep_paths)
+    return _rebuild_pruned(root, path=(), keep_paths=keep_paths)
 
 
 def _collect_ranked_nodes(
@@ -224,8 +170,8 @@ def _collect_ranked_nodes(
     path: PathKey,
     ranked: list[RankedNode],
 ) -> None:
-    for child in node.children:
-        child_path = (*path, child.label)
+    for child_index, child in enumerate(node.children):
+        child_path = (*path, child_index)
         ranked.append((-child.duration_us, -child.self_us, child_path))
         _collect_ranked_nodes(child, path=child_path, ranked=ranked)
 
@@ -238,8 +184,8 @@ def _rebuild_pruned(
 ) -> CallTreeNode:
     kept_children: list[CallTreeNode] = []
     folded_self_us = node.self_us
-    for child in node.children:
-        child_path = (*path, child.label)
+    for child_index, child in enumerate(node.children):
+        child_path = (*path, child_index)
         if child_path not in keep_paths:
             folded_self_us += child.duration_us
             continue
@@ -256,3 +202,7 @@ def _rebuild_pruned(
         self_us=folded_self_us,
         children=kept_children,
     )
+
+
+def _node_sort_key(node: CallTreeNode) -> tuple[int, int, str]:
+    return (node.start_us, -node.duration_us, node.label)

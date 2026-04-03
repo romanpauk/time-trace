@@ -1,61 +1,54 @@
 from __future__ import annotations
 
-import shutil
-import subprocess
 from pathlib import Path
 
 import pytest
 
-from time_trace.pipeline import run_profile
-from time_trace.trace_model import ProfileRequest
-
-pytestmark = pytest.mark.integration
-
-
-@pytest.mark.skipif(
-    shutil.which("clang++") is None or shutil.which("perf") is None,
-    reason="requires clang++ and perf",
+from tests.support.cpp_expectations import CppSampleCase
+from tests.support.perf_checks import (
+    HOST_SUPPORTS_DIRECT_PERF,
+    HOST_SUPPORTS_DIRECT_PERF_REASON,
+    assert_contains_groups,
+    assert_contains_ordered_chains,
+    read_perf_report,
+    read_perf_script,
+    run_cpp_sample,
 )
-def test_pipeline_generates_perf_report_for_tiny_compile(tmp_path: Path) -> None:
-    source_path = tmp_path / "sample.cpp"
-    source_path.write_text(
-        """
-        #include <tuple>
-        template <typename T> struct Foo { using type = T; };
-        template <typename... Ts>
-        using Tup = std::tuple<typename Foo<Ts>::type...>;
-        Tup<int, double, char> value;
-        """
-    )
 
-    result = run_profile(
-        ProfileRequest(
-            compiler_argv=[
-                "clang++",
-                "-std=c++20",
-                "-c",
-                str(source_path),
-                "-o",
-                str(tmp_path / "sample.o"),
-            ],
-            output_dir=tmp_path / "artifacts",
-            keep_trace=True,
-            emit_intermediate=True,
-            loop_budget=20_000_000,
-            sample_frequency=4000,
-        )
-    )
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(not HOST_SUPPORTS_DIRECT_PERF, reason=HOST_SUPPORTS_DIRECT_PERF_REASON),
+]
+
+
+TINY_TUPLE_CASE = CppSampleCase(
+    name="tiny-tuple",
+    source_name="tiny_tuple.cpp",
+    report_groups=(("clang frontend",), ("template instantiation", "TinyWrap", "TinyTuple")),
+    script_groups=(("clang frontend", "template instantiation", "TinyWrap", "TinyTuple"),),
+    caller_groups=(("clang frontend",),),
+    callee_groups=(("clang frontend", "template instantiation"),),
+    caller_chains=(),
+    callee_chains=(("template instantiation", "clang frontend", "clang++ compilation"),),
+)
+
+
+def test_pipeline_generates_perf_report_for_tiny_compile(tmp_path: Path) -> None:
+    result = run_cpp_sample(TINY_TUPLE_CASE, tmp_path)
 
     assert result.perf_data_path.exists()
-    report_text = result.report_path.read_text()
-    assert "clang frontend" in report_text
-    assert "template instantiation" in report_text or "InstantiateClass" in report_text
+    report_text = read_perf_report(result.perf_data_path)
+    caller_text = read_perf_report(result.perf_data_path, call_graph_order="caller")
+    callee_text = read_perf_report(result.perf_data_path, call_graph_order="callee")
+    script_text = read_perf_script(result.perf_data_path)
 
-    smoke = subprocess.run(
-        ["perf", "report", "--stdio", "-i", str(result.perf_data_path), "--sort", "symbol"],
-        check=False,
-        capture_output=True,
-        text=True,
+    assert_contains_groups(report_text, TINY_TUPLE_CASE.report_groups, context="tiny report")
+    assert_contains_groups(caller_text, TINY_TUPLE_CASE.caller_groups, context="tiny caller report")
+    assert_contains_groups(callee_text, TINY_TUPLE_CASE.callee_groups, context="tiny callee report")
+    assert_contains_groups(script_text, TINY_TUPLE_CASE.script_groups, context="tiny perf script")
+    assert_contains_ordered_chains(
+        callee_text,
+        TINY_TUPLE_CASE.callee_chains,
+        context="tiny callee report",
     )
-    assert smoke.returncode == 0
-    assert "clang frontend" in smoke.stdout
+    assert any(path.suffix == ".json" for path in result.output_dir.iterdir())

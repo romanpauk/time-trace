@@ -9,7 +9,7 @@ from pathlib import Path
 from .command import WrappedCommand, wrap_compile_command
 from .perf_writer import PerfArtifacts, emit_perf_profile
 from .reconstruct import build_call_tree
-from .sampling import build_replay_plan
+from .sampling import build_sampling_plan
 from .trace_loader import load_trace
 from .trace_model import ProfileRequest
 
@@ -20,9 +20,7 @@ class PipelineOptions:
     keep_trace: bool = False
     emit_intermediate: bool = False
     max_nodes: int = 512
-    target_iterations: int = 120_000_000
     sample_frequency: int | None = None
-    replay_compiler: str = "clang"
     perf_binary: str = "perf"
 
 
@@ -53,14 +51,13 @@ def run_pipeline(command: list[str], *, options: PipelineOptions) -> PipelineRes
 
     events = load_trace(wrapped.trace_path)
     tree = build_call_tree(events, max_nodes=options.max_nodes)
-    replay = build_replay_plan(tree, target_iterations=options.target_iterations)
+    plan = build_sampling_plan(tree, sample_frequency=options.sample_frequency)
     perf_artifacts = emit_perf_profile(
-        replay,
+        plan,
         output_dir=output_dir,
-        compiler=options.replay_compiler,
+        compiler=wrapped.original[0],
         perf_binary=options.perf_binary,
         keep_intermediate=options.emit_intermediate,
-        sample_frequency=options.sample_frequency,
     )
 
     if options.keep_trace:
@@ -82,9 +79,7 @@ def run_profile(request: ProfileRequest) -> PipelineResult:
             keep_trace=request.keep_trace,
             emit_intermediate=request.emit_intermediate,
             max_nodes=request.max_nodes,
-            target_iterations=request.loop_budget,
             sample_frequency=request.sample_frequency,
-            replay_compiler=request.replay_compiler,
             perf_binary=request.perf_binary,
         ),
     )
@@ -97,7 +92,12 @@ def _default_output_dir(wrapped: WrappedCommand) -> Path:
 
 
 def _run_compile(wrapped: WrappedCommand) -> None:
-    completed = subprocess.run(list(wrapped.wrapped), check=False, text=True, capture_output=True)
+    completed = subprocess.run(
+        list(wrapped.wrapped),
+        check=False,
+        text=True,
+        capture_output=True,
+    )
     if completed.returncode != 0:
         stderr = completed.stderr.strip() if completed.stderr else ""
         raise RuntimeError(f"clang command failed: {' '.join(wrapped.wrapped)}\n{stderr}".strip())

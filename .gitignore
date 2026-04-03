@@ -47,6 +47,8 @@
 .ruff_cache/
 __pycache__/
 dist/
+artifacts/
+time-trace-out/
 
 # Local OMX state
 .omx/

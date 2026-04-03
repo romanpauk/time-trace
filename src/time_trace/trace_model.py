@@ -35,15 +35,45 @@ class CallTreeNode:
 
 
 @dataclass(frozen=True)
-class ReplayNode:
+class SymbolDefinition:
     symbol_name: str
     display_label: str
-    self_iterations: int
-    children: tuple[ReplayNode, ...] = ()
+
+
+@dataclass(frozen=True)
+class PlannedSample:
+    timestamp_ns: int
+    period: int
+    stack_symbols: tuple[str, ...]
 
     @property
-    def total_iterations(self) -> int:
-        return self.self_iterations + sum(child.total_iterations for child in self.children)
+    def leaf_symbol(self) -> str:
+        return self.stack_symbols[0]
+
+
+@dataclass(frozen=True)
+class SamplingPlan:
+    root_symbol_name: str
+    total_duration_us: int
+    sample_count: int
+    symbols: tuple[SymbolDefinition, ...]
+    samples: tuple[PlannedSample, ...]
+
+
+@dataclass(frozen=True)
+class MappedSymbol:
+    symbol_name: str
+    display_label: str
+    address: int
+    size: int
+
+
+@dataclass(frozen=True)
+class SyntheticElfLayout:
+    image_path: Path
+    ir_path: Path
+    symbols: tuple[MappedSymbol, ...]
+    base_address: int
 
 
 @dataclass(frozen=True)
@@ -53,7 +83,5 @@ class ProfileRequest:
     keep_trace: bool = False
     emit_intermediate: bool = False
     max_nodes: int = 512
-    loop_budget: int = 120_000_000
     sample_frequency: int | None = None
-    replay_compiler: str = "clang"
     perf_binary: str = "perf"

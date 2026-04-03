@@ -54,4 +54,5 @@ addopts = "-ra"
 testpaths = ["tests"]
 markers = [
   "integration: exercises clang/perf end-to-end flow",
+  "perf_samples: runs heavier C++ sample programs through perf report/script",
 ]

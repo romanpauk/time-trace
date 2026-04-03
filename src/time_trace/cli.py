@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--emit-intermediate",
         action="store_true",
-        help="Keep replay helper inputs alongside the final perf artifacts.",
+        help="Keep synthetic LLVM IR alongside the final perf artifacts.",
     )
     parser.add_argument(
         "--max-nodes",
@@ -34,25 +34,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum number of reconstructed call-tree nodes to retain.",
     )
     parser.add_argument(
-        "--target-iterations",
-        type=int,
-        default=120_000_000,
-        help="Replay loop budget used to approximate relative self time.",
-    )
-    parser.add_argument(
         "--sample-frequency",
         type=int,
-        help="Optional perf record sample frequency for the synthetic replay helper.",
-    )
-    parser.add_argument(
-        "--replay-compiler",
-        default="clang",
-        help="Compiler used to build the synthetic replay helper.",
+        help="Synthetic sampling frequency in Hz used when writing perf.data directly.",
     )
     parser.add_argument(
         "--perf-binary",
         default="perf",
-        help="perf executable used for record/report commands.",
+        help="perf executable used for validation/report commands.",
     )
     parser.add_argument(
         "--verbose",
@@ -82,9 +71,7 @@ def main(argv: list[str] | None = None) -> int:
                 keep_trace=args.keep_trace,
                 emit_intermediate=args.emit_intermediate,
                 max_nodes=args.max_nodes,
-                target_iterations=args.target_iterations,
                 sample_frequency=args.sample_frequency,
-                replay_compiler=args.replay_compiler,
                 perf_binary=args.perf_binary,
             ),
         )
@@ -95,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.verbose:
         print(f"trace json: {result.trace_path}")
         print(f"perf data: {result.perf_artifacts.perf_data_path}")
+        print(f"perf script: {result.perf_artifacts.script_path}")
+        print(f"synthetic elf: {result.perf_artifacts.synthetic_image_path}")
         print(f"report: {result.perf_artifacts.report_path}")
         print(f"output dir: {result.output_dir}")
     else:

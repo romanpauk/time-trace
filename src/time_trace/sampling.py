@@ -1,46 +1,114 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 
-from .trace_model import CallTreeNode, ReplayNode
+from .trace_model import CallTreeNode, PlannedSample, SamplingPlan, SymbolDefinition
+
+_DEFAULT_SAMPLE_FREQUENCY = 4_000
 
 
-def build_replay_plan(root: CallTreeNode, *, target_iterations: int = 120_000_000) -> ReplayNode:
-    if target_iterations <= 0:
-        raise ValueError("target_iterations must be positive")
+@dataclass(frozen=True)
+class _SymbolizedNode:
+    node: CallTreeNode
+    symbol_name: str
+    children: tuple[_SymbolizedNode, ...]
 
-    total_self_us = max(1, _sum_self_time(root))
-    scale = target_iterations / total_self_us
+
+def build_sampling_plan(root: CallTreeNode, *, sample_frequency: int | None = None) -> SamplingPlan:
+    frequency = sample_frequency or _DEFAULT_SAMPLE_FREQUENCY
+    if frequency <= 0:
+        raise ValueError("sample_frequency must be positive when provided")
+
     symbol_counts: defaultdict[str, int] = defaultdict(int)
-    return _convert_node(root, scale=scale, symbol_counts=symbol_counts)
+    symbols: list[SymbolDefinition] = []
+    symbolized_root = _symbolize_tree(root, symbol_counts=symbol_counts, symbols=symbols)
+
+    duration_us = max(1, root.duration_us)
+    sample_count = max(1, round(duration_us * frequency / 1_000_000))
+    duration_ns = max(1, duration_us * 1_000)
+    samples = tuple(
+        PlannedSample(
+            timestamp_ns=offset_ns + 1,
+            period=1,
+            stack_symbols=_resolve_active_stack(
+                symbolized_root,
+                timestamp_ns=offset_ns,
+                root_start_us=root.start_us,
+            ),
+        )
+        for offset_ns in _sample_offsets(duration_ns=duration_ns, sample_count=sample_count)
+    )
+
+    return SamplingPlan(
+        root_symbol_name=symbolized_root.symbol_name,
+        total_duration_us=duration_us,
+        sample_count=sample_count,
+        symbols=tuple(symbols),
+        samples=samples,
+    )
 
 
-def _sum_self_time(node: CallTreeNode) -> int:
-    return node.self_us + sum(_sum_self_time(child) for child in node.children)
-
-
-def _convert_node(
+def _symbolize_tree(
     node: CallTreeNode,
     *,
-    scale: float,
     symbol_counts: defaultdict[str, int],
-) -> ReplayNode:
+    symbols: list[SymbolDefinition],
+) -> _SymbolizedNode:
     symbol_name = _unique_symbol_name(node.label, symbol_counts)
-    self_iterations = 0
-    if node.self_us > 0:
-        self_iterations = max(1, round(node.self_us * scale))
-
+    symbols.append(SymbolDefinition(symbol_name=symbol_name, display_label=node.label))
     children = tuple(
-        _convert_node(child, scale=scale, symbol_counts=symbol_counts)
-        for child in sorted(node.children, key=lambda current: current.duration_us, reverse=True)
+        _symbolize_tree(child, symbol_counts=symbol_counts, symbols=symbols)
+        for child in node.children
+    )
+    return _SymbolizedNode(node=node, symbol_name=symbol_name, children=children)
+
+
+def _sample_offsets(*, duration_ns: int, sample_count: int) -> tuple[int, ...]:
+    offsets: list[int] = []
+    for index in range(sample_count):
+        midpoint_ns = ((2 * index + 1) * duration_ns) // (2 * sample_count)
+        offsets.append(min(duration_ns - 1, midpoint_ns))
+    return tuple(offsets)
+
+
+def _resolve_active_stack(
+    node: _SymbolizedNode,
+    *,
+    timestamp_ns: int,
+    root_start_us: int,
+) -> tuple[str, ...]:
+    matching_children = [
+        child
+        for child in node.children
+        if _contains_timestamp(child.node, timestamp_ns=timestamp_ns, root_start_us=root_start_us)
+    ]
+    if not matching_children:
+        return (node.symbol_name,)
+
+    active_child = max(
+        matching_children,
+        key=lambda child: (child.node.start_us, child.node.duration_us, child.symbol_name),
+    )
+    return (
+        *_resolve_active_stack(
+            active_child,
+            timestamp_ns=timestamp_ns,
+            root_start_us=root_start_us,
+        ),
+        node.symbol_name,
     )
 
-    return ReplayNode(
-        symbol_name=symbol_name,
-        display_label=node.label,
-        self_iterations=self_iterations,
-        children=children,
-    )
+
+def _contains_timestamp(
+    node: CallTreeNode,
+    *,
+    timestamp_ns: int,
+    root_start_us: int,
+) -> bool:
+    start_ns = (node.start_us - root_start_us) * 1_000
+    end_ns = start_ns + max(1, node.duration_us * 1_000)
+    return start_ns <= timestamp_ns < end_ns
 
 
 def _unique_symbol_name(label: str, symbol_counts: defaultdict[str, int]) -> str:
