@@ -21,7 +21,6 @@ class PipelineOptions:
     emit_intermediate: bool = False
     max_nodes: int = 512
     sample_frequency: int | None = None
-    perf_binary: str = "perf"
 
 
 @dataclass(frozen=True)
@@ -34,10 +33,6 @@ class PipelineResult:
     @property
     def perf_data_path(self) -> Path:
         return self.perf_artifacts.perf_data_path
-
-    @property
-    def report_path(self) -> Path:
-        return self.perf_artifacts.report_path
 
 
 def run_pipeline(command: list[str], *, options: PipelineOptions) -> PipelineResult:
@@ -56,7 +51,6 @@ def run_pipeline(command: list[str], *, options: PipelineOptions) -> PipelineRes
         plan,
         output_dir=output_dir,
         compiler=wrapped.original[0],
-        perf_binary=options.perf_binary,
         keep_intermediate=options.emit_intermediate,
     )
 
@@ -80,7 +74,6 @@ def run_profile(request: ProfileRequest) -> PipelineResult:
             emit_intermediate=request.emit_intermediate,
             max_nodes=request.max_nodes,
             sample_frequency=request.sample_frequency,
-            perf_binary=request.perf_binary,
         ),
     )
 

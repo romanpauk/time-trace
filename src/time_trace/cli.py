@@ -39,11 +39,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Synthetic sampling frequency in Hz used when writing perf.data directly.",
     )
     parser.add_argument(
-        "--perf-binary",
-        default="perf",
-        help="perf executable used for validation/report commands.",
-    )
-    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Print generated artifact paths after a successful run.",
@@ -72,7 +67,6 @@ def main(argv: list[str] | None = None) -> int:
                 emit_intermediate=args.emit_intermediate,
                 max_nodes=args.max_nodes,
                 sample_frequency=args.sample_frequency,
-                perf_binary=args.perf_binary,
             ),
         )
     except Exception as exc:  # pragma: no cover - exercised via integration/runtime use
@@ -82,9 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.verbose:
         print(f"trace json: {result.trace_path}")
         print(f"perf data: {result.perf_artifacts.perf_data_path}")
-        print(f"perf script: {result.perf_artifacts.script_path}")
         print(f"synthetic elf: {result.perf_artifacts.synthetic_image_path}")
-        print(f"report: {result.perf_artifacts.report_path}")
         print(f"output dir: {result.output_dir}")
     else:
         print(result.perf_artifacts.perf_data_path)
