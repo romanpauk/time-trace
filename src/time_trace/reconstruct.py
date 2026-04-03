@@ -3,11 +3,11 @@ from __future__ import annotations
 import heapq
 from collections import defaultdict
 
-from .trace_model import CallTreeNode, TraceEvent
+from .trace_model import CallTreeNode, TraceEvent, event_matches_filter, event_tags
 
 _PHASE_LABELS = {
     "frontend": "clang frontend",
-    "instantiation": "template instantiation",
+    "template": "template",
     "codegen": "codegen",
 }
 _INSTANTIATION_NAMES = {"PerformPendingInstantiations"}
@@ -23,7 +23,7 @@ PathKey = tuple[int, ...]
 RankedNode = tuple[int, int, PathKey]
 
 
-def build_call_tree(events: list[TraceEvent], *, max_nodes: int = 512) -> CallTreeNode:
+def build_call_tree(events: list[TraceEvent], *, max_nodes: int | None = None) -> CallTreeNode:
     root = CallTreeNode(
         name="root",
         label="clang++ compilation",
@@ -45,7 +45,7 @@ def build_call_tree(events: list[TraceEvent], *, max_nodes: int = 512) -> CallTr
             label=event.label,
             start_us=event.start_us,
             duration_us=event.duration_us,
-            phase=classify_phase(event.name),
+            phase=classify_phase(event.name, event.label),
             detail=event.detail,
         )
         stack[-1].children.append(node)
@@ -54,15 +54,73 @@ def build_call_tree(events: list[TraceEvent], *, max_nodes: int = 512) -> CallTr
     _compute_self_time(root)
     root = _unwrap_execute_compiler(root)
     root = _inject_phase_groups(root)
-    root = _prune_tree(root, max_nodes=max_nodes)
+    if max_nodes is not None:
+        root = _prune_tree(root, max_nodes=max_nodes)
     _compute_self_time(root)
     return root
 
 
-def classify_phase(name: str) -> str:
-    if name.startswith("Instantiate") or name in _INSTANTIATION_NAMES:
-        return "instantiation"
-    if name in _CODEGEN_NAMES or name.startswith("Opt") or name.startswith("CodeGen"):
+def filter_events(
+    events: list[TraceEvent],
+    *,
+    include_patterns: tuple[str, ...] = (),
+    exclude_patterns: tuple[str, ...] = (),
+) -> list[TraceEvent]:
+    if not include_patterns and not exclude_patterns:
+        return events
+
+    filtered: list[TraceEvent] = []
+    for event in events:
+        tags = event_tags(event.name, event.label)
+        included = not include_patterns or event_matches_filter(
+            event_name=event.name,
+            event_label=event.label,
+            event_category=event.category,
+            event_tags=tags,
+            patterns=include_patterns,
+        )
+        if not included:
+            continue
+
+        excluded = exclude_patterns and event_matches_filter(
+            event_name=event.name,
+            event_label=event.label,
+            event_category=event.category,
+            event_tags=tags,
+            patterns=exclude_patterns,
+        )
+        if excluded:
+            continue
+
+        filtered.append(event)
+
+    if not filtered:
+        raise ValueError("filters excluded all clang time-trace events")
+    return filtered
+
+
+def list_event_names(events: list[TraceEvent]) -> tuple[str, ...]:
+    return tuple(sorted({event.name for event in events}))
+
+
+def list_event_tags(events: list[TraceEvent]) -> tuple[str, ...]:
+    return tuple(sorted({tag for event in events for tag in event_tags(event.name, event.label)}))
+
+
+def classify_phase(name: str, label: str = "") -> str:
+    if (
+        name.startswith("Instantiate")
+        or name in _INSTANTIATION_NAMES
+        or label.lower() == "template"
+    ):
+        return "template"
+    if (
+        name in _CODEGEN_NAMES
+        or name.startswith("Opt")
+        or name.startswith("CodeGen")
+        or name.endswith("Pass")
+        or label.startswith("RunPass:")
+    ):
         return "codegen"
     return "frontend"
 

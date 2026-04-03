@@ -28,7 +28,7 @@ CPP_SAMPLE_CASES: tuple[CppSampleCase, ...] = (
         source_name="variant_visit.cpp",
         report_groups=(
             ("clang frontend",),
-            ("template instantiation",),
+            ("template",),
             ("VariantDispatcher", "VariantPayload", "SampleVariant"),
         ),
         script_groups=(("VariantDispatcher", "VariantPayload", "SampleVariant"),),
@@ -37,18 +37,18 @@ CPP_SAMPLE_CASES: tuple[CppSampleCase, ...] = (
             ("VariantDispatcher", "VariantPayload", "SampleVariant"),
         ),
         callee_groups=(
-            ("template instantiation", "clang frontend"),
+            ("template", "clang frontend"),
             ("VariantDispatcher", "VariantPayload", "SampleVariant"),
         ),
-        caller_chains=(("template instantiation", "VariantDispatcher", "std::visit<"),),
-        callee_chains=(("VariantDispatcher", "template instantiation", "clang frontend"),),
+        caller_chains=(("template", "VariantDispatcher", "std::visit<"),),
+        callee_chains=(("VariantDispatcher", "template", "clang frontend"),),
     ),
     CppSampleCase(
         name="tuple-meta",
         source_name="tuple_meta.cpp",
         report_groups=(
             ("clang frontend",),
-            ("template instantiation",),
+            ("template",),
             ("ValueAt<", "MakeSequence<", "ValueList<"),
         ),
         script_groups=(("ValueAt<", "MakeSequence<", "ValueList<"),),
@@ -57,13 +57,11 @@ CPP_SAMPLE_CASES: tuple[CppSampleCase, ...] = (
             ("ValueAt<", "MakeSequence<", "ValueList<"),
         ),
         callee_groups=(
-            ("template instantiation", "clang frontend"),
+            ("template", "clang frontend"),
             ("ValueAt<", "MakeSequence<", "ValueList<"),
         ),
-        caller_chains=(("template instantiation", "ValueAt<100,", "ValueAt<99,"),),
-        callee_chains=(
-            ("ValueAt<100,", "template instantiation", "clang frontend", "clang++ compilation"),
-        ),
+        caller_chains=(("template", "ValueAt<100,", "ValueAt<99,"),),
+        callee_chains=(("ValueAt<100,", "template", "clang frontend", "clang++ compilation"),),
     ),
     CppSampleCase(
         name="ranges-pipeline",
@@ -72,16 +70,16 @@ CPP_SAMPLE_CASES: tuple[CppSampleCase, ...] = (
         script_groups=(("RangeProjection", "RangeBox", "consume_range"),),
         caller_groups=(("clang frontend",), ("RangeProjection", "RangeBox", "consume_range")),
         callee_groups=(
-            ("clang frontend", "codegen", "template instantiation"),
+            ("clang frontend", "codegen", "template"),
             ("RangeProjection", "RangeBox", "consume_range"),
         ),
-        caller_chains=(("template instantiation", "consume_range<", "RangeProjection<"),),
+        caller_chains=(("template", "consume_range<", "RangeProjection<"),),
         callee_chains=(
             (
                 "RangeProjection<",
                 "consume_range<",
                 "PerformPendingInstantiations",
-                "template instantiation",
+                "template",
                 "clang frontend",
             ),
         ),

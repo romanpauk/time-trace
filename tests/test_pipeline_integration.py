@@ -24,12 +24,12 @@ pytestmark = [
 TINY_TUPLE_CASE = CppSampleCase(
     name="tiny-tuple",
     source_name="tiny_tuple.cpp",
-    report_groups=(("clang frontend",), ("template instantiation", "TinyWrap", "TinyTuple")),
-    script_groups=(("clang frontend", "template instantiation", "TinyWrap", "TinyTuple"),),
+    report_groups=(("clang frontend",), ("template", "TinyWrap", "TinyTuple")),
+    script_groups=(("clang frontend", "template", "TinyWrap", "TinyTuple"),),
     caller_groups=(("clang frontend",),),
-    callee_groups=(("clang frontend", "template instantiation"),),
+    callee_groups=(("clang frontend", "template"),),
     caller_chains=(),
-    callee_chains=(("template instantiation", "clang frontend", "clang++ compilation"),),
+    callee_chains=(("template", "clang frontend", "clang++ compilation"),),
 )
 
 

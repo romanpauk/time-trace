@@ -9,22 +9,21 @@ commands.
 
 ## Example
 
-Compile a template-heavy source file through `time-trace`, then open the
-resulting profile with normal perf tooling. From the repository root, these
-commands are copy-pasteable as written:
+Compile a template-heavy source file through `time-trace`, keep only template
+events, then open the resulting profile with normal perf tooling. From the
+repository root, these commands are copy-pasteable as written:
 
 ```bash
-uv run time-trace --output .time-trace-example -- clang++ -std=c++20 -c tests/cpp_samples/variant_visit.cpp -o variant_visit.o
-perf report --stdio -i .time-trace-example/perf.data --sort symbol
+uv run time-trace --output .time-trace-example --include "tag:template" -- clang++ -std=c++20 -c tests/cpp_samples/variant_visit.cpp -o variant_visit.o
+perf report --stdio --percent-limit 0 --call-graph caller -i .time-trace-example/perf.data --sort symbol
 ```
 
 ```text
-100.00%   1.75%  clang++ compilation
-          |--91.64%--clang frontend
-          |          |--16.40%--template instantiation [8]
-          |          |          |--8.64%--VariantDispatcher<std::variant<...>>::run
-          |          |          |           --7.94%--std::visit<Overloaded<...>, const std::variant<...>&>
-          |          |--8.77%--template instantiation [9]
+clang++ compilation
+`--template
+   `--VariantDispatcher<std::variant<...>>::run
+      `--std::visit<Overloaded<...>, const std::variant<...>&>
+         `--std::__do_visit<...>
 ```
 
 You can also look at individual template symbols by inclusive samples:
@@ -35,11 +34,11 @@ perf report --stdio -i .time-trace-example/perf.data --sort symbol --fields over
 
 ```text
 Children   Self  Symbol
-48.81%     0.60% ValueAt<100, ValueList<...>>
-48.21%     0.60% ValueAt<99, ValueList<...>>
-47.62%     0.60% ValueAt<98, ValueList<...>>
-16.40%     0.54% template instantiation [8]
- 8.64%     0.27% VariantDispatcher<std::variant<...>>::run
+17.35%     6.62% PerformPendingInstantiations
+18.93%     0.63% VariantDispatcher<std::variant<...>>::run
+17.67%     1.26% std::visit<Overloaded<...>, const std::variant<...>&>
+11.99%     0.63% std::variant<VariantPayload<...>>::variant<VariantPayload<int>, ...>
+11.36%     0.00% std::variant<VariantPayload<...>>::variant<0UL, VariantPayload<int>, ...>
 ```
 
 These examples are abridged from real runs of the sample programs in
@@ -57,8 +56,8 @@ To inspect the generated profile with the normal perf tools, `perf` must also be
 available on `PATH`.
 
 ```bash
-uv run time-trace --output .time-trace-example -- clang++ -std=c++20 -c tests/cpp_samples/variant_visit.cpp -o variant_visit.o
-perf report --stdio -i .time-trace-example/perf.data --sort symbol
+uv run time-trace --output .time-trace-example --include "tag:template" -- clang++ -std=c++20 -c tests/cpp_samples/variant_visit.cpp -o variant_visit.o
+perf report --stdio --percent-limit 0 --call-graph caller -i .time-trace-example/perf.data --sort symbol
 ```
 
 ## Docs
