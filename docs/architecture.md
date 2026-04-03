@@ -1,10 +1,5 @@
 # Architecture
 
-## Goal
-
-Convert clang `-ftime-trace` output into a workflow that can be inspected with normal
-`perf report` tooling.
-
 ## High-level pipeline
 
 1. Wrap a direct `clang` or `clang++` compile command
@@ -20,28 +15,28 @@ Convert clang `-ftime-trace` output into a workflow that can be inspected with n
 
 ## Why replay instead of writing `perf.data` directly
 
-The risky requirement is not just exporting data, but making the result behave like real perf.
-The chosen v1 route is:
+The hard part is not exporting data. It is producing something that works well with normal perf
+tools. The current approach is:
 
 - reconstruct the compiler call tree from clang time-trace
 - replay that tree in a helper binary
 - let `perf record` create the final `perf.data`
 
-This keeps the output perf-native while avoiding a custom `perf.data` writer.
+This keeps the output in a standard perf format without implementing a custom `perf.data` writer.
 
 ## Module boundaries
 
 ### `command.py`
 
-Owns direct-command validation and trace-path derivation.
+Handles command validation and trace-path derivation.
 
 ### `trace_loader.py`
 
-Owns clang JSON parsing and event normalization.
+Loads clang JSON and normalizes events.
 
 ### `reconstruct.py`
 
-Owns interval nesting, phase classification, and synthetic phase grouping such as:
+Builds the call tree, classifies phases, and inserts grouped phase nodes such as:
 
 - `clang frontend`
 - `template instantiation`
@@ -49,19 +44,12 @@ Owns interval nesting, phase classification, and synthetic phase grouping such a
 
 ### `sampling.py`
 
-Owns the conversion from time-based self cost to replay loop counts.
+Converts self time into replay loop counts.
 
 ### `perf_writer.py`
 
-Owns the replay IR, replay helper compilation, and `perf record` / `perf report` interaction.
+Generates replay IR, builds the helper binary, and runs `perf record` / `perf report`.
 
 ### `pipeline.py`
 
-Owns the end-to-end orchestration and compatibility wrapper API.
-
-## Known limitations
-
-- v1 primarily uses complete `"X"` time-trace events
-- unmatched `b/e` trace pairs are not reconstructed
-- the final perf profile is synthetic/replayed, not a real sampled compiler execution
-- non-clang, non-Linux, and build-system interception are intentionally out of scope
+Runs the full pipeline and provides the compatibility wrapper API.
