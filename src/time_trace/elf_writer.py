@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import io
+import re
 import shutil
 import subprocess
 from pathlib import Path
 
-from .trace_model import MappedSymbol, SamplingPlan, SyntheticElfLayout
+from .trace_model import MappedSymbol, SamplingBlueprint, SyntheticElfLayout
+
+_IR_HEADER = 'source_filename = "time-trace-synthetic-symbols"\n\n'
+_IR_FOOTER = 'attributes #0 = { noinline nounwind optnone "frame-pointer"="all" }\n'
+_LLVM_NEEDS_ESCAPING = re.compile(r'["\\\\]|[^\x20-\x7E]')
 
 
 def emit_synthetic_elf(
-    plan: SamplingPlan,
+    plan: SamplingBlueprint,
     *,
     output_dir: Path,
     compiler: str,
@@ -60,25 +66,19 @@ def emit_synthetic_elf(
     )
 
 
-def render_symbol_ir(plan: SamplingPlan) -> str:
-    lines = ['source_filename = "time-trace-synthetic-symbols"', ""]
+def render_symbol_ir(plan: SamplingBlueprint) -> str:
+    buffer = io.StringIO()
+    buffer.write(_IR_HEADER)
     for symbol in plan.symbols:
-        lines.extend(
-            [
-                f"define void @{_llvm_name(symbol.symbol_name)}() #0 {{",
-                "entry:",
-                "  ret void",
-                "}",
-                "",
-            ]
-        )
-    lines.append('attributes #0 = { noinline nounwind optnone "frame-pointer"="all" }')
-    lines.append("")
-    return "\n".join(lines)
+        buffer.write("define void @")
+        buffer.write(_llvm_name(symbol.symbol_name))
+        buffer.write("() #0 {\nentry:\n  ret void\n}\n\n")
+    buffer.write(_IR_FOOTER)
+    return buffer.getvalue()
 
 
 def _read_symbol_table(
-    plan: SamplingPlan,
+    plan: SamplingBlueprint,
     *,
     image_path: Path,
     base_address: int,
@@ -122,6 +122,9 @@ def _read_symbol_table(
 
 
 def _llvm_name(symbol_name: str) -> str:
+    if _LLVM_NEEDS_ESCAPING.search(symbol_name) is None:
+        return f'"{symbol_name}"'
+
     escaped: list[str] = []
     for char in symbol_name:
         code_point = ord(char)

@@ -9,9 +9,9 @@ from pathlib import Path
 from .command import WrappedCommand, wrap_compile_command
 from .perf_writer import PerfArtifacts, emit_perf_profile
 from .reconstruct import build_call_tree
-from .sampling import build_sampling_plan
+from .sampling import build_sampling_stream
 from .trace_loader import load_trace
-from .trace_model import ProfileRequest
+from .trace_model import ProfileRequest, _validate_sample_frequency
 
 
 @dataclass(frozen=True)
@@ -21,6 +21,9 @@ class PipelineOptions:
     emit_intermediate: bool = False
     max_nodes: int = 512
     sample_frequency: int | None = None
+
+    def __post_init__(self) -> None:
+        _validate_sample_frequency(self.sample_frequency)
 
 
 @dataclass(frozen=True)
@@ -46,12 +49,13 @@ def run_pipeline(command: list[str], *, options: PipelineOptions) -> PipelineRes
 
     events = load_trace(wrapped.trace_path)
     tree = build_call_tree(events, max_nodes=options.max_nodes)
-    plan = build_sampling_plan(tree, sample_frequency=options.sample_frequency)
+    plan, samples = build_sampling_stream(tree, sample_frequency=options.sample_frequency)
     perf_artifacts = emit_perf_profile(
         plan,
         output_dir=output_dir,
         compiler=wrapped.original[0],
         keep_intermediate=options.emit_intermediate,
+        samples=samples,
     )
 
     if options.keep_trace:
