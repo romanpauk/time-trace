@@ -50,7 +50,11 @@ with the usual perf workflow.
 
 ## Quick start
 
-Requirements: `clang`/`clang++`, `perf`, and `nm` must be available on `PATH`. The tool supports Linux on little-endian `x86_64` only.
+Runtime requirements: `clang`/`clang++` and `nm` must be available on `PATH`.
+The tool supports Linux on little-endian `x86_64` only.
+
+To inspect the generated profile with the normal perf tools, `perf` must also be
+available on `PATH`.
 
 ```bash
 uv run time-trace --output .time-trace-example -- clang++ -std=c++20 -c tests/cpp_samples/variant_visit.cpp -o variant_visit.o

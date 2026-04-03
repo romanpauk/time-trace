@@ -5,16 +5,13 @@ with normal perf commands.
 
 ## Pipeline
 
-The runtime flow is:
-
 1. rewrite the incoming clang command to add `-ftime-trace`
 2. run the compile
 3. load the emitted JSON trace
 4. reconstruct a compiler call tree with synthetic phase roots
-5. choose chronological sample timestamps across the trace and resolve the active compiler stack for each one
+5. choose chronological sample timestamps across the trace and resolve the active compiler stack at each point
 6. build a synthetic symbol image for those frames
 7. write `perf.data`
-8. validate the result with `perf report` and `perf script`
 
 ## Trace reconstruction
 
@@ -73,4 +70,4 @@ The writer currently supports:
 - Linux
 - little-endian `x86_64`
 - clang / clang++ input
-- `perf`, `nm`, and the generated synthetic image available on disk
+- `nm`, the generated synthetic image, and `perf` for downstream inspection

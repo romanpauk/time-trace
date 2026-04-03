@@ -11,8 +11,7 @@ The command:
 1. adds `-ftime-trace`
 2. runs clang
 3. reconstructs a compiler call tree
-4. writes a synthetic `perf.data`
-5. validates it with perf
+4. writes `perf.data` and a synthetic symbol image
 
 By default the tool prints the path to the generated `perf.data` file.
 
@@ -23,7 +22,6 @@ By default the tool prints the path to the generated `perf.data` file.
 - `--emit-intermediate` — keep the synthetic LLVM IR that backs the symbol file
 - `--max-nodes <n>` — limit the reconstructed tree size before sampling
 - `--sample-frequency <hz>` — synthetic sampling frequency used when writing `perf.data`
-- `--perf-binary <path>` — use a specific perf binary for validation
 - `--verbose` — print the main artifact paths
 
 ## Generated artifacts
@@ -31,11 +29,11 @@ By default the tool prints the path to the generated `perf.data` file.
 A normal run writes:
 
 - `perf.data`
-- `perf-report.txt`
-- `perf-report-caller.txt`
-- `perf-report-callee.txt`
-- `perf-script.txt`
 - `synthetic-image.so`
+
+With `--keep-trace`, it also keeps:
+
+- raw clang time-trace JSON
 
 With `--emit-intermediate`, it also keeps:
 

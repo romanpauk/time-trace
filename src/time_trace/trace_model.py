@@ -84,4 +84,3 @@ class ProfileRequest:
     emit_intermediate: bool = False
     max_nodes: int = 512
     sample_frequency: int | None = None
-    perf_binary: str = "perf"

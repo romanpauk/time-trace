@@ -2,7 +2,10 @@
 
 ## Setup
 
-Runtime tools needed on `PATH`: `clang` or `clang++`, `perf`, and `nm`.
+Runtime tools needed on `PATH`: `clang` or `clang++`, and `nm`.
+
+For test runs and manual profile inspection, `perf` must also be available on
+`PATH`.
 
 ```bash
 uv sync --all-groups
@@ -25,7 +28,7 @@ uv run pytest
 - [`src/time_trace/sampling.py`](../src/time_trace/sampling.py) — timeline-aware sample planning
 - [`src/time_trace/elf_writer.py`](../src/time_trace/elf_writer.py) — synthetic shared object generation for perf symbolization
 - [`src/time_trace/perf_data_model.py`](../src/time_trace/perf_data_model.py) — perf.data record packing
-- [`src/time_trace/perf_writer.py`](../src/time_trace/perf_writer.py) — perf artifact writing and validation
+- [`src/time_trace/perf_writer.py`](../src/time_trace/perf_writer.py) — core artifact writing
 - [`src/time_trace/pipeline.py`](../src/time_trace/pipeline.py) — end-to-end orchestration
 - [`tests/`](../tests/) — coverage for CLI, reconstruction, sampling, perf output, and end-to-end sample programs
 
